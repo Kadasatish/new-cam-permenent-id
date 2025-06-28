@@ -2,37 +2,43 @@
 const storedId = localStorage.getItem('peer-id') || crypto.randomUUID();
 localStorage.setItem('peer-id', storedId);
 
-// Create PeerJS connection
-const peer = new Peer(storedId);
+// Show ID in UI
 document.getElementById('myId').textContent = "My ID: " + storedId;
 
+// Create PeerJS connection
+const peer = new Peer(storedId);
 let conn;
 
-// Incoming connection
+// Incoming connection (from other peer)
 peer.on('connection', c => {
   conn = c;
   setupConnection();
 });
 
-// Outgoing connection (optional function to use)
+// Outgoing connection (you initiate)
 function connectToOther(id) {
   conn = peer.connect(id);
-  setupConnection();
+  conn.on('open', () => {
+    setupConnection();
+  });
 }
 
-// Setup communication
+// Common setup for both directions
 function setupConnection() {
+  // Receive data
   conn.on('data', data => {
     if (data.type === 'dot') updateDot(data.value);
     if (data.type === 'cam') updateCam(data.value);
   });
 
+  // Dot toggle change
   document.getElementById('dotToggle').addEventListener('change', () => {
     const value = document.getElementById('dotToggle').checked;
     send({ type: 'dot', value });
     updateDot(value);
   });
 
+  // Cam switch change
   document.getElementById('camSwitch').addEventListener('input', () => {
     const value = parseInt(document.getElementById('camSwitch').value);
     send({ type: 'cam', value });
@@ -42,21 +48,25 @@ function setupConnection() {
 
 // Send message to peer
 function send(msg) {
-  if (conn && conn.open) conn.send(msg);
+  if (conn && conn.open) {
+    conn.send(msg);
+  }
 }
 
-// Dot UI
+// Update Dot UI
 function updateDot(state) {
   const dot = document.getElementById('dot');
   document.getElementById('dotToggle').checked = state;
   dot.style.backgroundColor = state ? 'white' : 'black';
 }
 
-// Camera control
+// Camera handling
 let stream = null;
+
 function updateCam(mode) {
   const video = document.getElementById('video');
-  if (stream) stopCam();
+
+  stopCam();
 
   if (mode === 1) {
     video.style.display = 'none';
@@ -65,18 +75,28 @@ function updateCam(mode) {
 
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: mode === 0 ? 'environment' : 'user' },
-    audio: false
+    audio: true
   }).then(s => {
     stream = s;
     video.srcObject = stream;
     video.style.display = 'block';
-  }).catch(console.error);
+  }).catch(err => {
+    console.error("Camera error:", err);
+  });
 }
 
 function stopCam() {
   if (stream) {
-    stream.getTracks().forEach(t => t.stop());
+    stream.getTracks().forEach(track => track.stop());
     stream = null;
   }
   document.getElementById('video').style.display = 'none';
-                               }
+}
+
+// On page load, ask for peer ID to connect
+window.onload = () => {
+  const otherId = prompt("Enter peer ID to connect or leave blank to wait:");
+  if (otherId) {
+    connectToOther(otherId);
+  }
+};
